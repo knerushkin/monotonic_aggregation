@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <style> /* set the CSS */
+    .openBidLine {
+      fill: none;
+      stroke: steelblue;
+      stroke-width: 1px;
+      shape-rendering:  geometricPrecision;
+    }
+    .openBidLineFocus{
+      fill: none;
+      stroke: #2E7866;
+      stroke-width: 1px;
+
+      clip-path: url(#clipFocus);
+      shape-rendering:  geometricPrecision;
+    }
+    .node circle {
+      fill: #fff;
+      stroke: steelblue;
+      stroke-width: 2px;
+    }
+    .node text { font: 12px sans-serif; }
+
+    .node--internal text {
+    text-shadow: 0 1px 0 #fff, 0 -1px 0 #fff, 1px 0 0 #fff, -1px 0 0 #fff;
+    }
+
+    .link {
+    fill: none;
+    stroke: #ccc;
+    stroke-width: 1px;
+    }
+    .active-text text {
+        opacity: 0;
+    }
+    .passive-text text {
+        opacity: 1;
+    }
+
+    /*.openBidLineFocus {
+      fill: none;
+      stroke: steelblue;
+      stroke-width: 1px;
+
+      clip-path: url(#clipFocus);
+      shape-rendering:  geometricPrecision;
+    }*/
+
+    </style>
+    <title>Monotonic Aggregation</title>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/d3/4.1.1/d3.min.js"></script>
+
+</head>
+<body>
+    <div id="view">
+        <div id="treeview"></div>
+        <div id="focusview"></div>
+        <div id="brushview"></div>
+    </div>
+    <script>
+        var brushShape = {
+                window: {
+                        height: 80,
+                        width: 1000
+                    },
+                margin: {
+                        top: 50,
+                        bottom: 50,
+                        left: 50,
+                        right: 50
+                        }
+                }
+
+        var treeShape = {
+                window: {
+                        height: 200,
+                        width: 1000
+                    },
+                margin: {
+                        top: 50,
+                        bottom: 50,
+                        left: 50,
+                        right: 50
+                        }
+                }
+        var focusShape = {
+                window: {
+                        height: 300,
+                        width: 700
+                    },
+                margin: {
+                        top: 50,
+                        bottom: 50,
+                        left: 50,
+                        right: 50
+                        }
+                }
+        var legendShape = {
+                window: {
+                        height: 300,
+                        width: 180
+                    },
+                margin: {
+                        top: 50,
+                        bottom: 50,
+                        left: 50,
+                        right: 50
+                        }
+                }
+
+
+        var indicatorColor
+        var brush = d3.brushX()
+            .extent([[0, 0], [brushShape.window.width, brushShape.window.height]])
+            .on("brush end", brushed);
+
+        var brushview = d3.select("#brushview").append("svg")
+                    .attr("height", brushShape.window.height + brushShape.margin.top + brushShape.margin.bottom)
+                    .attr("width", brushShape.window.width + brushShape.margin.left + brushShape.margin.right)
+
+        var focusview = d3.select("#focusview").append("svg")
+                    .attr("height", focusShape.window.height + focusShape.margin.top + focusShape.margin.bottom)
+                    .attr("width", focusShape.window.width + focusShape.margin.left + focusShape.margin.right)
+
+        var legendview = d3.select("#focusview").append("svg")
+                    .attr("height", legendShape.window.height + legendShape.margin.top + legendShape.margin.bottom)
+                    .attr("width", legendShape.window.width + legendShape.margin.left + legendShape.margin.right)
+
+        legendview.append("rect")
+                      .attr("x", 0)
+                      .attr("y", 0)
+                      .attr("height", legendShape.window.height + legendShape.margin.top + legendShape.margin.bottom)
+                      .attr("width", legendShape.window.width + legendShape.margin.left + legendShape.margin.right)
+                      .style("stroke", "black")
+                      .style("fill", "none")
+                      .style("stroke-width", 2);
+
+        var treeview = d3.select("#treeview").append("svg")
+                    .attr("height", treeShape.window.height + treeShape.margin.top + treeShape.margin.bottom)
+                    .attr("width", treeShape.window.width + treeShape.margin.left + treeShape.margin.right)
+
+        brushview.append("defs").append("clipPath")
+            .attr("id", "clip")
+          .append("rect")
+            .attr("width", brushShape.window.width)
+            .attr("height",  brushShape.window.height);
+
+        focusview.append("defs").append("clipPath")
+            .attr("id", "clipFocus")
+          .append("rect")
+            .attr("width", focusShape.window.width + 10)
+            .attr("height", focusShape.window.height);
+
+        var brushspace = brushview.append("g").attr("class", "brushView")
+            .attr("transform", "translate(" + brushShape.margin.left + ", " + brushShape.margin.top + ")")
+
+        var focusspace = focusview.append("g").attr("class", "focusView")
+            .attr("transform", "translate(" + focusShape.margin.left + ", " + focusShape.margin.top + ")")
+
+        var hullspace = focusspace.append("g").attr("class", "hullView")
+
+        var legendspace = legendview.append("g").attr("class", "legendView")
+            .attr("transform", "translate(" + legendShape.margin.left + ", " + legendShape.margin.top + ")")
+
+
+
+        var treespace = treeview.append("g").attr("class", "treeView")
+            .attr("transform", "translate(" + treeShape.margin.left + ", " + treeShape.margin.top + ")")
+
+        var treemap = d3.tree()
+            .size([treeShape.window.width, treeShape.window.height]);
+
+        var xScale = d3.scaleLinear().range([0, brushShape.window.width])
+        var yScale = d3.scaleLinear().range([brushShape.window.height, 0])
+
+        var xScaleFocus = d3.scaleLinear().range([0, focusShape.window.width])
+        var yScaleFocus = d3.scaleLinear().range([focusShape.window.height, 0])
+
+        var xAxis = d3.axisBottom(xScale)
+        var yAxis = d3.axisLeft(yScale)
+        var xAxisFocus = d3.axisBottom(xScaleFocus)
+        var yAxisFocus = d3.axisLeft(yScaleFocus)
+
+        var openBidLine = d3.line()
+            .x(function(d, i){ return xScale(d.id)})
+            .y(function(d, i){ return yScale(d.openBid)})
+
+        var openBidLineFocus = d3.line()
+            .x(function(d, i){ return xScaleFocus(d.id)})
+            .y(function(d, i){ return yScaleFocus(d.openBid)})
+
+
+        var globalData
+
+        d3.json("/data/forex/eur_usd/", function(error, data) {
+            globalData = data
+            data.forEach(function(d, i) {
+                d.openBid = +d.openBid
+                d.id = +d.id
+            })
+
+            var openBid = data.map(function(d) { return d.openBid})
+            var min = Math.min.apply(null, openBid)
+            var max = Math.max.apply(null, openBid)
+
+            yScale.domain([min, max])
+            xScale.domain([0, data[data.length - 1].id])
+
+            yScaleFocus.domain(yScale.domain())
+            xScaleFocus.domain(xScale.domain())
+
+            brushspace.append("g").attr("class", "yAxis").call(yAxis)
+            brushspace.append("g").attr("class", "xAxis")
+                .attr("transform", "translate(0, " + brushShape.window.height + ")")
+                .call(xAxis)
+
+            focusspace.append("g").attr("class", "yAxisFocus").call(yAxisFocus)
+            focusspace.append("g").attr("class", "xAxisFocus")
+                .attr("transform", "translate(0, " + focusShape.window.height + ")")
+                .call(xAxisFocus)
+
+            focusspace.append("g").attr("class", "brushedView")
+                .append("path").datum(data)
+                .attr("class", "openBidLineFocus")
+                .attr("d", openBidLineFocus)
+
+            brushspace.append("g")
+                .append("path").datum(data)
+                .attr("class", "openBidLine")
+                .attr("d", openBidLine)
+
+            brushspace.append("g")
+                .attr("class", "brush")
+                .call(brush)
+                .call(brush.move, xScale.range());
+        })
+
+    function brushed() {
+        var selection = d3.event.selection || xScale.range()
+        hullspace.html("")
+        xScaleFocus.domain(selection.map(xScale.invert, xScale))
+        var focusInterval = selection.map(xScale.invert, xScale)
+
+        focusInterval[0] = Math.ceil(focusInterval[0])
+        focusInterval[1] = Math.round(focusInterval[1])
+        var interval = globalData.slice(focusInterval[0], focusInterval[1]).map(function(data){
+            return data.openBid
+        })
+        var min = Math.min.apply(null, interval)
+        var max = Math.max.apply(null, interval)
+        yScaleFocus.domain([min, max])
+        focusspace.select(".yAxisFocus").call(yAxisFocus)
+        focusspace.select(".xAxisFocus").call(xAxisFocus)
+        focusspace.select(".openBidLineFocus").attr("d", openBidLineFocus)
+
+        d3.json("/data/forex/eur_usd/" + focusInterval[0] + "-" + focusInterval[1] , function(error, data) {
+            buildTree(data)
+            listenSelectedNodes()
+            indicatorColor =  indicatorColor || d3.scaleOrdinal(d3.schemeCategory20)
+        })
+    }
+
+    function listenSelectedNodes() {
+        console.log(focusspace.select(".hullView"))
+    }
+
+    var activeSet = []
+    function buildTree(treeData) {
+
+        treespace.html("")
+        treeData = {
+            name: "root",
+            "children": treeData
+        }
+        var nodes = d3.hierarchy(treeData);
+
+        nodes = treemap(nodes);
+
+        var linkSelection = treespace.selectAll(".link")
+            .data(nodes.descendants().slice(1))
+
+        linkSelection.enter().append("path")
+            .attr("class", "link")
+            .attr("d", function(d) {
+                return "M" + d.x + "," + d.y
+                    + "C" + d.x + "," + (d.y + d.parent.y) / 2
+                    + " " + d.parent.x + "," +  (d.y + d.parent.y) / 2
+                    + " " + d.parent.x + "," + d.parent.y;
+            })
+
+        var nodeSelection = treespace.selectAll(".node")
+            .data(nodes.descendants()).enter().append("g")
+            .attr("class", function(d) {
+                return "node" +
+               (d.children ? " node--internal" : " node--leaf") })
+           .attr("transform", function(d) {
+             return "translate(" + d.x + "," + d.y + ")";
+           })
+
+        nodeSelection.append("circle")
+            .attr("r", 4)
+            .attr("id", function(d, i){
+                d3.select(this).datum().data.id = i
+                return i
+            })
+            .on("click", function() {
+                self = d3.select(this)
+                if(d3.select(this).datum().data.name == "root"){
+                    alert("Can't remove root")
+                } else {
+                    d3.select(this).datum().data.active = d3.select(this).datum().data.active ? false : true
+                    color = indicatorColor(d3.select(this).attr("id"))
+                    d3.select(this).style("fill", d3.select(this).datum().data.active ? color : "white")
+
+                    if(d3.select(this).datum().data.active) {
+                        // d3.select(this).attr("r", 6).classed("active", true)
+                        // activeSet.push({"name":d3.select(this).datum().data.name, "color": color})
+
+                        activeHulls = treespace.selectAll(".active").data()
+
+                        console.log(treespace.selectAll(".active").nodes())
+                        console.log(d3.select(this).attr("id"))
+                        // console.log(treespace.selectAll(".active").filter(function (x) { return self.datum().data.id !== x.data.id; }).nodes())
+                        d3.select(this).attr("r", 6).classed("active", true)
+                        console.log(treespace.selectAll(".active").nodes())
+                        if(activeHulls.length > 0){
+                            for(var i = 0; i < activeHulls.length; i++){
+                                var current = activeHulls[i]
+                                activeHullsPath = activeHulls[i].data.value.map(function(d){
+                                    return [d.id, + d.openBid]
+                                })
+                                var activePath = self.datum().data.value.map(function(d){
+                                    return [d.id, + d.openBid]
+                                })
+                                console.log(activeHullsPath)
+                                console.log('circle.intersection.i' + self.datum().data.id * activeHulls[i].data.id )
+                                console.log(focusspace.selectAll('circle.intersection.i' + self.datum().data.id * activeHulls[i].data.id ))
+
+                                d3.json('/data/forex/eur_usd/instersection/' + JSON.stringify([activePath, activeHullsPath]), function(error, data) {
+                                    console.log(data)
+                                    console.log(focusspace.selectAll('circle.intersection').data(data))
+                                    console.log(focusspace.selectAll("g." + self.datum().data.name))
+                                    var circleBinding = hullspace.selectAll("g." + self.datum().data.name).selectAll('circle.intersection.i' + self.datum().data.id * current.data.id).data(data)
+                                        .attr('cx', function(d) { console.log(d); return xScaleFocus(d[0]) })
+                                        .attr('cy', function(d) { return yScaleFocus(d[1]) })
+                                        .attr('r', 4)
+                                    circleBinding.enter().append('circle')
+                                        .attr('class', 'intersection.i' + self.datum().data.id * current.data.id)
+                                        .attr('cx', function(d) { console.log(d); return xScaleFocus(d[0]) })
+                                        .attr('cy', function(d) { return yScaleFocus(d[1]) })
+                                        .attr('r', 4)
+                                    //   .merge(circleBinding)
+                                    console.log(focusspace.selectAll('.intersection.i' + self.datum().data.id * current.data.id))
+                                    circleBinding.exit().remove()
+                                })
+                            }
+                        }
+                        d3.select(this).attr("r", 6).classed("active", true)
+                        activeSet.push({"name":self.datum().data.name, "color": color})
+
+                        updateLegendView(activeSet)
+
+                        hullspace.append("g").attr("class", "hull " + d3.select(this).datum().data.name)
+                            .append("path").datum(self.datum().data.value)
+                            .attr("class", "openBidLineFocus")
+                            .attr("d", openBidLineFocus)
+                            .style("stroke", color)
+
+                    } else {
+                        d3.select(this).attr("r", 4).classed("active", false)
+                        for(var i = 0; i < activeSet.length; i++) {
+                            if(activeSet[i].name == d3.select(this).datum().data.name) {
+                                activeSet.splice(i, 1)
+                            }
+                        }
+                        updateLegendView(activeSet)
+                        hullspace.selectAll("g." + d3.select(this).datum().data.name).html("")
+                    }
+                }
+            })
+        nodeSelection.append("text")
+            .attr("dy", ".35em")
+            .attr("y", function(d) { return d.children ? -20 : 20; })
+            .style("text-anchor", "middle")
+            .text(function(d) { var result = d.data.name.split('-'); return result[result.length - 1] + ' ' + result.length })
+
+    }
+
+    var yLegend = d3.scaleBand().range([legendShape.window.height, 0])
+      .padding(0.1)
+    legendspace.append("g").attr("class", 'y axis')
+        //.call(d3.axisLeft(yLegend));
+
+    function updateLegendView(data){
+      // console.log('update expand view')
+      // console.log(data)
+    //   if(data.length > 1){
+    //       d3.json("/data/forex/eur_usd/<chunk1>/<chunk2>")
+    //   }
+      yLegend.domain(d3.range(1, data.length + 1))
+
+      // console.log(d3.range(1, data.length + 1), y(1))
+      legendspace.selectAll('g.y.axisLegend')
+        .call(d3.axisLeft(yLegend));
+
+      var legendBind = legendspace.selectAll('text.legend')
+        .attr('transform', function(d, i) { return 'translate(15,' + (yLegend(i+1) + yLegend.bandwidth()/2) + ')'})
+        .data(data)
+
+      legendBind.enter().append('text')
+          .attr('class', 'legend')
+          .attr('transform', function(d, i) { return 'translate(15,' + (yLegend(i+1) + yLegend.bandwidth()/2 ) + ')'})
+        .merge(legendBind)
+          .text(function(d){ return d.name})
+          .style("fill", function(d){ return d.color})
+
+      legendBind.exit().remove()
+    }
+
+    function updateLegend(data){
+        if(data.length > 10) {
+            alert("Too much data to draw")
+        } else {
+            var textSelection = legendspace.append('g').selectAll("text").data(data).enter()
+            textSelection.append("text")
+                .attr("dy", "20px")
+                .attr("y", function(d, i) { return i * 20 })
+                // .attr("x", 50)
+                // .style("text-anchor", "middle")
+                .text(function(d) { return d.name })
+                .style("fill", function(d){ return d.color})
+            // textSelection.exit().remove()
+
+        }
+    }
+    </script>
+</body>
+</html>
